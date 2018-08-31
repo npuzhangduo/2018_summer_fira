@@ -1,0 +1,566 @@
+#include <fira_penalty.h>
+#include <time.h>
+
+Fira_penalty::Fira_penalty()
+{
+    images = new PenaltyImgResult();
+    imgpro = new PenaltyImg();
+    
+    m_execute = true;
+    m_process_state = APPROACHBALL;
+    m_pre_state = APPROACHBALL;
+ 
+    m_ball_valid = 0;
+    m_goal_valid = 0;
+
+    m_ball_center.x = 0;
+    m_ball_center.y = 0;
+    m_goal_center.x = 0;
+    m_goal_center.y = 0;
+   
+    m_RLdiff = 0;
+    m_FBdiff = 0;
+    
+    m_FBstep = 0;
+    m_FBstep_goal = 0;
+    m_unit_FBstep = 0.6;
+    m_FBstepcof = 6;
+
+    m_RLstep = 0;
+    m_RLstep_goal = 0;
+    m_unit_RLstep = 0.2;
+    m_RLstepcof = 6;
+    
+    m_RLturn = 0;
+    m_RLturn_goal = 0;
+    m_unit_RLturn = 3;
+    m_RLturncof = 6;
+   
+    m_findthre = 30;
+    m_AddressBallCenter.x = 160;
+    m_AddressBallCenter.y = 93;
+  
+    m_SwingBallCenter.x = 180;
+    m_SwingBallCenter.y = 170;
+    m_SwingDiff_X = 15;
+    m_SwingDiff_Y = 25;
+    m_goaldiff = 0;
+    m_direction = 0;
+    flag = 1;
+    //ifset = 1;
+}
+
+Fira_penalty::~Fira_penalty()
+{
+}
+
+void Fira_penalty::ThreadMotion()
+{
+    Init();
+    while(m_execute)
+    {
+        printf("\n");
+        printf("m_process_state:%d\n", m_process_state);
+        printf("m_FBStep:%f\n", m_FBstep);
+        printf("m_RLStep:%f\n", m_RLstep);
+        printf("m_RLTurn:%f\n", m_RLturn);
+        motion->CheckStatus();
+        
+        GetImageResult();
+        
+        //if(m_process_state == FINDFOOTBALL)
+          //  FindBall();
+        //else 
+        if(m_process_state == APPROACHBALL)
+            ApproachBall();
+        else if(m_process_state == ADJUSTRL)
+            AdjustRL();
+        else if(m_process_state == ADJUSTFB)
+            AdjustFB();
+        else if(m_process_state == ADJUSTDIR)
+            AdjustDir();
+        else if(m_process_state == LOST)
+            Lost();
+        else if(m_process_state == KICK)
+        {
+            printf("ready to kick\n");
+            Kick();
+        }
+    }
+} 
+
+int Fira_penalty::GetImageResult()
+{
+    printf("GetImageResult\n");
+    imgpro->imageProcess(frame,images);
+    PenaltyImgResult *tmp_result;
+    tmp_result = dynamic_cast<PenaltyImgResult *>(images);
+    
+    while( is_new_img == false ) usleep(8000);
+
+    m_ball_valid = tmp_result->ball_valid;
+    m_goal_valid = tmp_result->hole_valid;
+   
+    m_ball_center = tmp_result->ball_center;
+    m_goal_center = tmp_result->hole_center;
+    
+    printf("ball_center:%f, %f\n", m_ball_center.x, m_ball_center.y);
+    printf("hole_center:%f, %f\n", m_goal_center.x, m_goal_center.y); 
+    
+    is_new_img = false;
+    return 0;   
+}
+
+void Fira_penalty::Init()
+{
+    motion = new Motion();
+    //PenaltyImg *tmp_proc = dynamic_cast<PenaltyImg *>(m_imgPro);
+    motion -> poseInit();
+    Head::GetInstance()->MoveByAngle(0,10);
+    Walking::GetInstance()->X_OFFSET = -10;
+    Walking::GetInstance()->Z_MOVE_AMPLITUDE = 15;
+    clock_gettime(CLOCK_MONOTONIC,&start);
+}
+
+/*void Fira_penalty::FindBall()
+{
+    m_RLdiff = m_ball_center.x - m_AddressBallCenter.x;
+    if(m_RLdiff > 0)
+       m_direction = 1;//球在右边
+    else
+       m_direction = 2;//球在左边
+    if( fabs(m_RLdiff) > m_findthre )
+    {
+        m_RLturn_goal = -1 * 8 * m_RLturncof * m_RLdiff / IMG_WIDTH;
+        if( m_RLturn < m_RLturn_goal )
+            m_RLturn += m_unit_RLturn;
+        else
+           m_RLturn -= m_unit_RLturn;
+    }
+    else //发生状态转移
+    {
+        m_process_state = APPROACHBALL;
+        printf("Change to APPROACHBALL\n");
+        m_FBstep = 10;
+        m_RLstep = 0.0;
+        m_RLturn = 0.0;
+    }
+    motion->walk(m_FBstep , m_RLstep , m_RLturn);
+}*/
+void Fira_penalty::ApproachBall()
+{    //static int dirflag;
+     static int lostball = 0;
+     if(!m_ball_valid)
+     {
+         lostball++;
+         if(lostball >= 3 )
+         {
+              m_pre_state = APPROACHBALL;
+              m_process_state = LOST;
+              printf("ADjustRL change to lost");
+              return;
+         }
+     }
+     else//(m_ball_valid)
+         lostball = 0;
+     m_RLdiff = m_ball_center.x - IMG_WIDTH / 2;
+     m_RLturn_goal = -1 * 8 * m_RLturncof * m_RLdiff / IMG_WIDTH;
+     if(m_RLturn < m_RLturn_goal)
+         m_RLturn += m_unit_RLturn;
+     else
+         m_RLturn -= m_unit_RLturn;
+     //if(m_RLturn_goal > 0) dirflag--;
+     //else  dirflag++;
+     //if(ifset == 1 && dirflag > 10)
+     //{ 
+       //  m_direction = 2;
+        // ifset = 0;
+     //}
+     //if(ifset == 1 && dirflag < -10)
+     //{
+       //  m_direction = 1;
+         //ifset = 2;
+     //} 
+     printf("m_RLturn_goal:%f\n",m_RLturn_goal);
+     m_RLstep = 0.0;
+     m_FBstep = 10;
+     motion->walk(m_FBstep,m_RLstep,m_RLturn);
+     clock_gettime(CLOCK_MONOTONIC, &now);
+     if(now.tv_sec - start.tv_sec < 0.1)
+     {
+         if(m_RLdiff > 0)
+            m_direction = 1;//球在右边
+         else
+            m_direction = 2;//球在左边
+     }
+     if(m_direction == 1) 
+        printf("right\n");
+     else
+        printf("left\n");
+      
+     if(m_ball_center.y > 195 )
+     {
+          m_process_state = ADJUSTDIR;
+          printf("ApproachBall change to ADJUSTDIR\n");
+          usleep(100 * 8000);
+          //Walking::GetInstance() -> Stop();
+     } 
+}
+void Fira_penalty::AdjustDir()
+{
+    
+    
+    Head::GetInstance()->MoveByAngle(0,10);
+    if(m_goal_center.x > 160)
+        m_goaldiff = m_goal_center.x - 260;
+    else
+        m_goaldiff = m_goal_center.x - 80;
+    if(fabs(m_goaldiff) < 50)
+    {
+        m_process_state = ADJUSTRL;
+        usleep(50 * 8000);
+        Head::GetInstance()->MoveByAngle(0,-20);
+        //Walking::GetInstance()->Stop();
+        return;
+    }
+    else
+    {
+        m_RLturn_goal = -1 * 3 * m_RLturncof * m_goaldiff / IMG_WIDTH;
+      
+    }
+    
+    /*if(m_direction == 1)
+    {
+        m_goaldiff = m_goal_center.x - 80;
+        if(fabs(m_goaldiff) < 40)
+        {
+            m_process_state = ADJUSTRL;
+            Walking::GetInstance() -> Stop();
+            return;
+        }
+        else
+        {
+            m_RLturn_goal = -1 * 6 * m_RLturncof * m_goaldiff / IMG_WIDTH;
+        }
+    }
+    if(m_direction == 2)
+    {
+        m_goaldiff = m_goal_center.x - 100;
+        if(fabs(m_goaldiff) < 40)
+        {
+            m_process_state = ADJUSTRL;
+            Walking::GetInstance() -> Stop();
+            return;
+        }
+        else
+        {
+            m_RLturn_goal = -1 * 6 * m_RLturncof * m_goaldiff / IMG_WIDTH;
+        }
+    }*/
+    if(m_RLturn < m_RLturn_goal)
+       m_RLturn += 2 * m_unit_RLturn;
+    else
+       m_RLturn -= 2 * m_unit_RLturn;
+    m_FBstep = 0;
+    m_RLstep = 0;
+    
+    motion->walk(m_FBstep,m_RLstep,m_RLturn);
+}
+void Fira_penalty::AdjustFB()
+{
+    /*m_SwingBallCenter.y 来控制何时完成前后调整，与头的俯仰角度有关，tilt一般为-20
+    m_SwingDiff_Y(上下偏移阈值)
+    */
+    static int lostFB = 0;
+    printf("adjustFB");
+    GetImageResult();
+    if(!m_ball_valid)
+    {
+        lostFB++;
+        if(lostFB >= 10)
+        {
+            m_pre_state = ADJUSTFB;
+            m_process_state = LOST;
+            printf("AdjustFB change to lost\n");
+            return;
+        }          
+    }
+    else
+         lostFB = 0;
+    if(m_direction == 1) m_SwingBallCenter.x = 180;
+    else m_SwingBallCenter.x = 140;
+    m_FBdiff = m_ball_center.y - m_SwingBallCenter.y;
+    m_RLdiff = m_ball_center.x - m_SwingBallCenter.x;
+    printf("%m_fbdiff::%lf\n",m_FBdiff);
+    
+    
+    m_RLstep_goal = -1 * 0.5 * m_RLstepcof * m_RLdiff / IMG_WIDTH;
+    m_FBstep_goal = -1 * 4.0 * m_FBstepcof * m_FBdiff / IMG_HEIGHT;
+    
+    /*if( m_ball_center.y > m_SwingBallCenter.y )
+    {
+        m_process_state = KICK;
+        m_pre_state = ADJUSTFB;
+        printf("AdjustFB change to AdjustRL");
+    }
+    else
+    {*/
+        if(fabs(m_FBdiff) >= m_SwingDiff_Y)
+        {
+            if(m_FBstep < m_FBstep_goal)
+               m_FBstep += 0.3 * m_unit_FBstep;
+            else 
+               m_FBstep -= 0.3 * m_unit_FBstep;
+
+            if(m_RLstep < m_RLstep_goal)
+               m_RLstep += 0.5 * m_unit_RLstep;
+            else
+               m_RLstep -= 0.5 * m_unit_RLstep;
+
+            m_RLturn = 0;
+            
+        }
+        else
+        {
+            m_process_state = KICK;
+            m_pre_state = ADJUSTFB;
+            
+            printf("AdjustFB change to ADJUSTRL\n");
+            usleep(100 * 8000);
+        }
+    //}
+    Walking::GetInstance()->Start();
+    motion->walk(m_FBstep,m_RLstep,m_RLturn);
+
+}
+void Fira_penalty::AdjustRL()
+{
+     /*m_SwingBallCenter.x来控制偏离程度*/
+     m_FBstep = 0;
+     //Walking::GetInstance() -> Stop();
+     Head::GetInstance()->MoveByAngle(0,-20);
+     /*if(flag == 1)
+     {
+         if(m_goal_center.x > 160) m_direction = 1;
+         else m_direction = 2;
+         flag = 0;  
+     }*/
+     static int lostball = 0;
+     if(!m_ball_valid) lostball++;
+     if(lostball > 5)
+     {
+         m_pre_state = ADJUSTRL;
+         m_process_state = LOST;
+         printf("AdjustRL change to lost\n");
+         return;
+     } 
+     else
+         lostball = 0;
+     
+     if(m_direction == 1) m_SwingBallCenter.x = 180;
+     else m_SwingBallCenter.x = 140;
+     m_RLdiff = m_ball_center.x - m_SwingBallCenter.x;
+     printf("m_RLdiff:%f\n",m_RLdiff);
+     usleep(20 * 8000);
+     if(fabs(m_RLdiff) < m_SwingDiff_X)
+     {
+         m_pre_state = ADJUSTRL;
+         m_process_state = ADJUSTFB;
+         printf("ADJUSTRL change to ADJUSTFB\n");
+     }
+     else if(m_ball_valid != 0)
+     {
+         if(m_RLdiff < 0)
+         {
+            Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+           
+            Action::GetInstance()->Start(92);
+            usleep(150 * 8000);
+            printf("adjust ,zuo heng yi");
+         }
+         else
+         {
+            Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+            
+            Action::GetInstance()->Start(98);
+            usleep(150 * 8000);
+            printf("adjust, you heng yi");
+            
+         }
+     }
+}
+void Fira_penalty::Kick()
+{
+    Head::GetInstance()->MoveByAngle(0,20);
+    Walking::GetInstance()->Stop();
+    printf("stop walking\n");
+    
+    static int lost_goal = 0;
+    if(!m_goal_valid)
+    {
+        lost_goal++;
+        if(lost_goal >= 10)
+        {
+            m_pre_state = KICK;
+            m_process_state = LOST;
+	    printf("KICK Change to Lost\n");
+            return ;
+        }
+    }
+    else
+        lost_goal = 0;
+    if(m_goal_center.x > 160)
+        m_goaldiff = m_goal_center.x - 240;
+    else
+        m_goaldiff = m_goal_center.x - 100;
+    
+    printf("m_goal_center.x:%f\n", m_goal_center.x);
+    printf("m_goal_diff:%f\n", m_goaldiff);
+    //if(fabs(m_goaldiff) < 40)
+    //{
+         Head::GetInstance()->MoveByAngle(0,-20);
+         usleep(100 * 8000);
+         GetImageResult();
+         Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+         if(m_ball_center.x < 158)
+         {
+            
+              Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+              Action::GetInstance()->Start(22);
+              usleep(500 * 8000);
+              printf("left kick\n");
+         }
+         else if(m_ball_center.x > 172)
+         {
+            
+              Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+              Action::GetInstance()->Start(21);
+              usleep(500 * 8000);
+              printf("you kick\n");
+         }
+         else
+         {
+              usleep(100 * 8000);
+              Action::GetInstance()->Start(92);//zuo heng yi
+              usleep(200 * 8000);
+              printf("adjust zuo hen yi\n");
+         }
+    //}
+      //else
+       // {
+        //    m_process_state = ADJUSTDIR;
+          //  printf("kick to adjustdir\n");
+           // m_pre_state = KICK;
+       // }
+    /*if(m_direction == 1)
+    {
+        m_goaldiff = m_goal_center.x - 240;
+        printf("m_goal_center.x:%f\n", m_goal_center.x);
+        printf("m_goal_diff:%f\n", m_goaldiff);
+        if(fabs(m_goaldiff) < 40)
+        {
+            Head::GetInstance()->MoveByAngle(0,-20);
+            usleep(150 * 8000);
+            GetImageResult();
+            Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+            if(m_ball_center.x < 145)
+            {
+                usleep(100 * 8000);
+                Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+                Action::GetInstance()->Start(22);
+                usleep(500 * 8000);
+                printf("left kick\n");
+            }
+            else if(m_ball_center.x > 170)
+            {
+                usleep(100 * 8000);
+                Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+                Action::GetInstance()->Start(21);
+                usleep(500 * 8000);
+                printf("you kick\n");
+            }
+            else
+            {
+                usleep(100 * 8000);
+                Action::GetInstance()->Start(92);//zuo heng yi
+                usleep(200 * 8000);
+                printf("adjust zuo hen yi\n");
+            }
+        }
+        else
+            m_process_state = ADJUSTDIR;
+    }
+    if(m_direction == 2)
+    {
+        m_goaldiff = m_goal_center.x - 100;
+        printf("m_goal_center.x:%f\n", m_goal_center.x);
+        printf("m_goal_diff:%f\n", m_goaldiff);
+        if(fabs(m_goaldiff) < 40)
+        {
+            Head::GetInstance()->MoveByAngle(0,-20);
+            usleep(150 * 8000);
+            GetImageResult();
+            Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+            if(m_ball_center.x < 145)
+            {
+                usleep(100 * 8000);
+                Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+                Action::GetInstance()->Start(22);
+                usleep(500 * 8000);
+                printf("left kick\n");
+            }
+            else if(m_ball_center.x > 170)
+            {
+                usleep(100 * 8000);
+                Action::GetInstance()->m_Joint.SetEnableBody(true,true);
+                Action::GetInstance()->Start(21);
+                usleep(500 * 8000);
+                printf("left kick\n");
+            }
+            else
+            {
+                usleep(100 * 8000);
+                Action::GetInstance()->Start(94);//zuo heng yi
+                usleep(200 * 8000);
+                printf("adjust zuo hen yi\n");
+            }
+        }
+        else
+            m_process_state = ADJUSTDIR;
+    }*/
+    
+}
+
+void Fira_penalty::Lost()
+{
+    if(m_pre_state == KICK)
+    {
+	Head::GetInstance()->MoveByAngle(0, 10);
+	if(m_goal_valid)
+       	m_process_state = m_pre_state;	
+
+	Walking::GetInstance()->m_Joint.SetEnableBodyWithoutHead(true, true);
+	Head::GetInstance()->m_Joint.SetEnableHeadOnly(true, true);
+	Walking::GetInstance() -> Start();
+	Walking::GetInstance() -> Z_MOVE_AMPLITUDE =  20;
+	motion -> walk(-10.0, 0, 8);	
+    }
+
+    else
+    {
+	Head::GetInstance()->MoveByAngle(0, -10);
+	if(m_ball_valid)
+	    m_process_state = m_pre_state;
+
+	Walking::GetInstance()->m_Joint.SetEnableBodyWithoutHead(true, true);
+	Head::GetInstance()->m_Joint.SetEnableHeadOnly(true, true);
+	Walking::GetInstance() -> Start();
+	Walking::GetInstance() -> Z_MOVE_AMPLITUDE =  15;
+	motion -> walk(-10.0, 0, 8);
+    }
+}
+
+
+
+
+

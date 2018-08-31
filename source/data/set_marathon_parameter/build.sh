@@ -1,0 +1,1 @@
+g++ main.cpp marathonvision.cpp `pkg-config --cflags --libs opencv` -o marathon

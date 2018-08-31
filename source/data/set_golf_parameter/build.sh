@@ -1,0 +1,1 @@
+g++ main.cpp golfvision.cpp `pkg-config --cflags --libs opencv` -o archery

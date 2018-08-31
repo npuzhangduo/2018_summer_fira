@@ -1,0 +1,2 @@
+../source/data/std_img/y.jpg
+../source/data/std_img/r1.jpg
