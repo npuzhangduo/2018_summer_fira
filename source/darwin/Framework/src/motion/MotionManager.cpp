@@ -41,19 +41,19 @@ bool MotionManager::Initialize(CM730 *cm730)
 	m_Enabled = false;
 	m_ProcessEnable = true;
 
-	if(m_CM730->Connect() == false)
+	if(m_CM730->Connect() == false)//连接CM730
 	{
 		if(DEBUG_PRINT == true)
 			fprintf(stderr, "Fail to connect CM-730\n");
 		return false;
 	}
 
-	for(int id=JointData::ID_R_SHOULDER_PITCH; id<JointData::NUMBER_OF_JOINTS; id++)
+	for(int id=JointData::ID_R_SHOULDER_PITCH; id<JointData::NUMBER_OF_JOINTS; id++)//枚举舵机号
 	{
 		if(DEBUG_PRINT == true)
 			fprintf(stderr, "ID:%d initializing...", id);
 		
-		if(m_CM730->ReadWord(id, MX28::P_PRESENT_POSITION_L, &value, &error) == CM730::SUCCESS)
+		if(m_CM730->ReadWord(id, MX28::P_PRESENT_POSITION_L, &value, &error) == CM730::SUCCESS)//读出MX28的值赋给MotionStatus
 		{
 			MotionStatus::m_CurrentJoints.SetValue(id, value);
 			MotionStatus::m_CurrentJoints.SetEnable(id, true);
@@ -170,7 +170,7 @@ void MotionManager::SaveINISettings(minIni* ini, const std::string &section)
 #define GYRO_WINDOW_SIZE    100
 #define ACCEL_WINDOW_SIZE   30
 #define MARGIN_OF_SD        2.0
-void MotionManager::Process()
+void MotionManager::Process()//关键函数！！！！！
 {
     if(m_ProcessEnable == false || m_IsRunning == true)
         return;
@@ -178,7 +178,7 @@ void MotionManager::Process()
     m_IsRunning = true;
 
     // calibrate gyro sensor
-    if(m_CalibrationStatus == 0 || m_CalibrationStatus == -1)
+    if(m_CalibrationStatus == 0 || m_CalibrationStatus == -1)//如果陀螺仪没有被校准过
     {
         static int fb_gyro_array[GYRO_WINDOW_SIZE] = {512,};
         static int rl_gyro_array[GYRO_WINDOW_SIZE] = {512,};
@@ -186,7 +186,7 @@ void MotionManager::Process()
 
         if(buf_idx < GYRO_WINDOW_SIZE)
         {
-            if(m_CM730->m_BulkReadData[CM730::ID_CM].error == 0)
+            if(m_CM730->m_BulkReadData[CM730::ID_CM].error == 0)//从CM730里读值校准陀螺仪
             {
                 fb_gyro_array[buf_idx] = m_CM730->m_BulkReadData[CM730::ID_CM].ReadWord(CM730::P_GYRO_Y_L);
                 rl_gyro_array[buf_idx] = m_CM730->m_BulkReadData[CM730::ID_CM].ReadWord(CM730::P_GYRO_X_L);
@@ -238,11 +238,11 @@ void MotionManager::Process()
         }
     }
 
-    if(m_CalibrationStatus == 1 && m_Enabled == true)
+    if(m_CalibrationStatus == 1 && m_Enabled == true)//如果陀螺仪校准过
     {
         static int fb_array[ACCEL_WINDOW_SIZE] = {512,};
         static int buf_idx = 0;
-        if(m_CM730->m_BulkReadData[CM730::ID_CM].error == 0)
+        if(m_CM730->m_BulkReadData[CM730::ID_CM].error == 0)//算出陀螺仪和加速度计的值
         {
             MotionStatus::FB_GYRO = m_CM730->m_BulkReadData[CM730::ID_CM].ReadWord(CM730::P_GYRO_Y_L) - m_FBGyroCenter;
             MotionStatus::RL_GYRO = m_CM730->m_BulkReadData[CM730::ID_CM].ReadWord(CM730::P_GYRO_X_L) - m_RLGyroCenter;
@@ -257,7 +257,7 @@ void MotionManager::Process()
             sum += fb_array[idx];
         avr = sum / ACCEL_WINDOW_SIZE;
 
-        if(avr < MotionStatus::FALLEN_F_LIMIT)
+        if(avr < MotionStatus::FALLEN_F_LIMIT)//用加速度计判断位姿
             MotionStatus::FALLEN = FORWARD;
         else if(avr > MotionStatus::FALLEN_B_LIMIT)
             MotionStatus::FALLEN = BACKWARD;
@@ -268,7 +268,7 @@ void MotionManager::Process()
         {
             for(std::list<MotionModule*>::iterator i = m_Modules.begin(); i != m_Modules.end(); i++)
             {
-                (*i)->Process();
+                (*i)->Process();//分别执行Head、Action、Walking的Process()
                 for(int id=JointData::ID_R_SHOULDER_PITCH; id<JointData::NUMBER_OF_JOINTS; id++)
                 {
                     if((*i)->m_Joint.GetEnable(id) == true)

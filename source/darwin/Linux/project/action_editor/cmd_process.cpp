@@ -82,7 +82,7 @@ void ReadStep(CM730 *cm730)
 	int value;
 	for(int id=0; id<31; id++)
 	{
-		if(id >= JointData::ID_R_SHOULDER_PITCH && id <= JointData::ID_HEAD_TILT)
+		if(id >= JointData::ID_R_SHOULDER_PITCH && id <= JointData::ID_LEFT_HAND_ROLL)
 		{
 			if(cm730->ReadByte(id, MX28::P_TORQUE_ENABLE, &value, 0) == CM730::SUCCESS)
 			{
@@ -156,7 +156,7 @@ void MoveDownCursor()
 	}
 	else if(Col <= CCWSLOPE_COL)
 	{
-		if( Row < ID_20_ROW )
+		if( Row < ID_22_ROW )
 			GoToCursor(Col, Row+1);
 	}
 	else
@@ -321,6 +321,8 @@ void DrawPage()
 	printf( "ID:18(L_ANK_ROLL) [    ]                                                       \n" );//7
 	printf( "ID:19(HEAD_PAN)   [    ]                                                       \n" );//8
 	printf( "ID:20(HEAD_TILT)  [    ]                                                       \n" );//9
+	printf( "ID:21(RIGHT_HAND) [    ]                                                       \n" );//9
+	printf( "ID:22(LEFT_HAND)  [    ]                                                       \n" );//9
 	printf( "   PauseTime      [    ]                                                       \n" );//0
 
 	if( Page.header.schedule == Action::SPEED_BASE_SCHEDULE )
@@ -837,7 +839,7 @@ void SetValue(CM730 *cm730, int value)
 
 void ToggleTorque(CM730 *cm730)
 {
-	if(Col != STP7_COL || Row > ID_20_ROW)
+	if(Col != STP7_COL || Row > ID_22_ROW)
 		return;
 
 	int id = Row + 1;
@@ -1123,7 +1125,7 @@ void OnOffCmd(CM730 *cm730, bool on, int num_param, int *list)
 	{
 		for(int i=0; i<num_param; i++)
 		{
-			if(list[i] >= JointData::ID_R_SHOULDER_PITCH && list[i] <= JointData::ID_HEAD_TILT)
+			if(list[i] >= JointData::ID_R_SHOULDER_PITCH && list[i] <= JointData::ID_LEFT_HAND_ROLL)
 				cm730->WriteByte(list[i], MX28::P_TORQUE_ENABLE, (int)on, 0);
 		}
 	}
@@ -1318,8 +1320,8 @@ void GoCmd(CM730 *cm730, int index)
 	{
 		if(Page.step[index].position[id] & Action::INVALID_BIT_MASK)
 		{			
-			PrintCmd("Exist invalid joint value");
-			return;
+			//PrintCmd("Exist invalid joint value");
+			//return;
 		}
 
 		if(cm730->ReadWord(id, MX28::P_PRESENT_POSITION_L, &wStartPosition, 0) != CM730::SUCCESS)
